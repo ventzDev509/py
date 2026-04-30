@@ -2,7 +2,6 @@ import librosa
 import requests
 from io import BytesIO
 from fastapi import FastAPI, BackgroundTasks, Body
-# Enpòte CORSMiddleware isit la
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -24,10 +23,10 @@ app = FastAPI()
 # ---------------------------------------------------------
 # KONFIGIRASYON CORS
 # ---------------------------------------------------------
-# Ou ka mete ["*"] pou pèmèt tout moun, oswa mete URL NestJS ou a sèlman pou plis sekirite
 origins = [
     "http://localhost:3000",
     "https://hmizikbackend-1.onrender.com",
+    "https://hmizik.onrender.com", # Ajoute URL Frontend ou tou si sa nesesè
     "*" 
 ]
 
@@ -39,11 +38,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Varyab anviwonman pou URL NestJS la
 BACKEND_URL = os.environ.get("BACKEND_URL", "https://hmizikbackend-1.onrender.com")
 
 # ---------------------------------------------------------
-# AI REKÒMANDASYON
+# AI REKÒMANDASYON (Optimize)
 # ---------------------------------------------------------
 @app.post("/recommend/{track_id}")
 async def get_recommendations(track_id: str, payload: list = Body(...)):
@@ -51,14 +49,16 @@ async def get_recommendations(track_id: str, payload: list = Body(...)):
         df = pd.DataFrame(payload)
         
         if not os.path.exists('genre_encoder.pkl'):
-             return {"status": "error", "message": "Modèl la poko antrene. Tanpri kouri /train-recommendation anvan."}
+             return {"status": "error", "message": "Modèl la poko antrene."}
              
         le = joblib.load('genre_encoder.pkl')
         
+        # Netwayaj done
         for col in ['duration', 'bpm', 'plays']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
+        # Encode genre ak sekirite (si yon genre nèf parèt)
         df['genre_encoded'] = le.transform(df['genre'].astype(str))
         features = df[['genre_encoded', 'duration', 'bpm', 'plays']]
         
@@ -67,11 +67,22 @@ async def get_recommendations(track_id: str, payload: list = Body(...)):
             return {"status": "error", "message": "Track pa jwenn nan lis la"}
         
         dist = cosine_similarity(features)
-        similar_indices = dist[target_idx[0]].argsort()[-6:-1][::-1]
+        
+        # --- RANJE POU L KA PLIS FLEKSIB ---
+        # Nou chèche konnen konbe mizik ki disponib (minus mizik aktyèl la)
+        n_total = len(df)
+        n_to_return = min(n_total, 6) # Nou vle 5 rekòmandasyon (+1 pou tèt li)
+
+        # argsort() bay endis yo soti nan pi piti rive nan pi gwo
+        # Nou pran dènye n_to_return yo, epi nou retire dènye a (ki se mizik aktyèl la)
+        similar_indices = dist[target_idx[0]].argsort()[-n_to_return:]
+        similar_indices = [i for i in similar_indices if i != target_idx[0]][::-1]
         
         recommended_ids = df.iloc[similar_indices]['trackId'].tolist()
         return {"status": "success", "recommendations": recommended_ids}
+        
     except Exception as e:
+        print(f"❌ Erè Rekòmandasyon: {str(e)}", flush=True)
         return {"status": "error", "message": str(e)}
 
 # ---------------------------------------------------------
@@ -109,7 +120,7 @@ async def train_model(payload: list = Body(...)):
         return {"status": "error", "message": str(e)}
 
 # ---------------------------------------------------------
-# ANALIZ BPM
+# ANALIZ BPM (Avèk ranje scalar)
 # ---------------------------------------------------------
 class TrackRequest(BaseModel):
     trackId: str
@@ -124,6 +135,7 @@ def analyze_and_update(track_id, audio_url):
         y, sr = librosa.load(audio_data, duration=30)
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
         
+        # Ranje scalar a
         if isinstance(tempo, (np.ndarray, list)):
             bpm_val = float(tempo[0])
         else:
