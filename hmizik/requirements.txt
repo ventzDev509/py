@@ -1,0 +1,13 @@
+fastapi
+
+uvicorn
+
+librosa
+
+scikit-learn
+
+pandas
+
+joblib
+
+numpy

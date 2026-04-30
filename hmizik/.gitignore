@@ -1,0 +1,19 @@
+# Python kach
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Anviwonman Virtuel (Virtual Env)
+venv/
+env/
+.env
+
+# AI Models (Opsyonèl)
+# Si w vle antrene modèl la sou Render menm, pa voye fichye .pkl yo. 
+# Men si w vle itilize sa k sou PC ou a, retire de liy anba yo nan ignore a.
+*.pkl
+*.joblib
+
+# OS metadata
+.DS_Store
+Thumbs.db
