@@ -121,7 +121,8 @@ def analyze_and_update(track_id, audio_url):
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
         bpm = int(round(float(tempo)))
         
-        requests.patch(f"http://127.0.0.1:3000/tracks/{track_id}/bpm", json={"bpm": bpm})
+        # requests.patch(f"http://127.0.0.1:3000/tracks/{track_id}/bpm", json={"bpm": bpm})
+        requests.patch(f"https://hmizikbackend-1.onrender.com/tracks/{track_id}/bpm", json={"bpm": bpm})
         print(f"SUCCESS: BPM {bpm} sove.", flush=True)
     except Exception as e:
         print(f"ERROR BPM: {str(e)}", flush=True)
