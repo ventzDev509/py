@@ -48,43 +48,51 @@ async def get_recommendations(track_id: str, payload: list = Body(...)):
     try:
         df = pd.DataFrame(payload)
         
+        # 1. Tcheke fichye modèl yo
         if not os.path.exists('genre_encoder.pkl'):
-             return {"status": "error", "message": "Modèl la poko antrene."}
+             return {"status": "error", "message": "AI a bezwen antrene anvan."}
              
         le = joblib.load('genre_encoder.pkl')
         
-        # Netwayaj done
+        # 2. Netwaye done yo
         for col in ['duration', 'bpm', 'plays']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-        # Encode genre ak sekirite (si yon genre nèf parèt)
+        # 3. Sekirite Genre (Evite erè si yon jan pa t nan antrenman an)
+        known_genres = set(le.classes_)
+        df['genre'] = df['genre'].apply(lambda x: x if x in known_genres else list(known_genres)[0])
         df['genre_encoded'] = le.transform(df['genre'].astype(str))
+        
+        # 4. Verifye si ID a egziste nan sa NestJS voye a
+        target_rows = df[df['trackId'] == track_id]
+        if target_rows.empty:
+            # Si li pa jwenn li, li pap ka konpare anyen
+            print(f"⚠️ ID {track_id} pa nan payload la", flush=True)
+            return {"status": "success", "recommendations": [], "debug": "ID not in payload"}
+        
+        target_idx = target_rows.index[0]
+        
+        # 5. Kalkile Similarity
         features = df[['genre_encoded', 'duration', 'bpm', 'plays']]
-        
-        target_idx = df[df['trackId'] == track_id].index
-        if target_idx.empty:
-            return {"status": "error", "message": "Track pa jwenn nan lis la"}
-        
         dist = cosine_similarity(features)
         
-        # --- RANJE POU L KA PLIS FLEKSIB ---
-        # Nou chèche konnen konbe mizik ki disponib (minus mizik aktyèl la)
+        # 6. Pran n_total rekòmandasyon (max 6)
         n_total = len(df)
-        n_to_return = min(n_total, 6) # Nou vle 5 rekòmandasyon (+1 pou tèt li)
-
-        # argsort() bay endis yo soti nan pi piti rive nan pi gwo
-        # Nou pran dènye n_to_return yo, epi nou retire dènye a (ki se mizik aktyèl la)
-        similar_indices = dist[target_idx[0]].argsort()[-n_to_return:]
-        similar_indices = [i for i in similar_indices if i != target_idx[0]][::-1]
+        top_n = min(n_total, 6)
         
-        recommended_ids = df.iloc[similar_indices]['trackId'].tolist()
+        # Jwenn n pi gwo nòt yo
+        similar_indices = dist[target_idx].argsort()[-top_n:]
+        # Retire tèt li (mizik k ap jwe a) epi ranvèse lis la
+        recommended_indices = [i for i in similar_indices if i != target_idx][::-1]
+        
+        recommended_ids = df.iloc[recommended_indices]['trackId'].tolist()
+        
+        print(f"✅ OK! Rekòmande {len(recommended_ids)} mizik pou {track_id}", flush=True)
         return {"status": "success", "recommendations": recommended_ids}
         
     except Exception as e:
-        print(f"❌ Erè Rekòmandasyon: {str(e)}", flush=True)
+        print(f"❌ Erè: {str(e)}", flush=True)
         return {"status": "error", "message": str(e)}
-
 # ---------------------------------------------------------
 # ANTRENMAN MODÈL LA
 # ---------------------------------------------------------
