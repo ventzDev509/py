@@ -134,6 +134,6 @@ async def handle_analyze(data: TrackRequest, background_tasks: BackgroundTasks):
 
 if __name__ == "__main__":
     import uvicorn
-    # Render itilize yon varyab anviwonman ki rele PORT
+    # Render mande pou host la se 0.0.0.0 obligatwa
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.1", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
