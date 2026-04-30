@@ -75,19 +75,23 @@ async def predict_similar_tracks(track_id: str):
 @app.post("/train-recommendation")
 async def train_model(payload: list = Body(...)):
     try:
-        print("📊 Done resevwa. Antrenman milti-faktè ap kòmanse...", flush=True)
         df = pd.DataFrame(payload)
         
-        if df.empty:
-            return {"status": "error", "message": "Pa gen done"}
+        # 1. Netwaye done yo touswit anndan Python
+        # Sa ap konvèti string an chif epi ranplase null ak 0
+        cols_to_fix = ['duration', 'bpm', 'plays', 'liked']
+        for col in cols_to_fix:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+        if 'genre' not in df.columns:
+             return {"status": "error", "message": "Jaden 'genre' manke"}
 
-        # 1. Netwayaj Genre
+        # 2. Kontinyèl ak antrenman an...
         le = LabelEncoder()
         df['genre_encoded'] = le.fit_transform(df['genre'].astype(str))
         
-        # 2. Nou itilize: Genre, Duration, BPM, ak Plays kòm Features
-        # Nou asire tout se chif (fill NaN ak 0)
-        X = df[['genre_encoded', 'duration', 'bpm', 'plays']].fillna(0)
+        X = df[['genre_encoded', 'duration', 'bpm', 'plays']]
         y = df['liked']
         
         # 3. Antrenman ak Random Forest
