@@ -2,6 +2,8 @@ import librosa
 import requests
 from io import BytesIO
 from fastapi import FastAPI, BackgroundTasks, Body
+# Enpòte CORSMiddleware isit la
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import pandas as pd
@@ -19,29 +21,44 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 app = FastAPI()
 
-# Varyab anviwonman pou URL NestJS la (Mete l sou Render Dashboard tou)
+# ---------------------------------------------------------
+# KONFIGIRASYON CORS
+# ---------------------------------------------------------
+# Ou ka mete ["*"] pou pèmèt tout moun, oswa mete URL NestJS ou a sèlman pou plis sekirite
+origins = [
+    "http://localhost:3000",
+    "https://hmizikbackend-1.onrender.com",
+    "*" 
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Varyab anviwonman pou URL NestJS la
 BACKEND_URL = os.environ.get("BACKEND_URL", "https://hmizikbackend-1.onrender.com")
 
 # ---------------------------------------------------------
-# AI REKÒMANDASYON (Chanje an POST pou evite erè GET body)
+# AI REKÒMANDASYON
 # ---------------------------------------------------------
 @app.post("/recommend/{track_id}")
 async def get_recommendations(track_id: str, payload: list = Body(...)):
     try:
         df = pd.DataFrame(payload)
         
-        # Asire encoder la egziste
         if not os.path.exists('genre_encoder.pkl'):
              return {"status": "error", "message": "Modèl la poko antrene. Tanpri kouri /train-recommendation anvan."}
              
         le = joblib.load('genre_encoder.pkl')
         
-        # Netwaye kolòn yo pou evite erè tip
         for col in ['duration', 'bpm', 'plays']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-        # Encode genre a
         df['genre_encoded'] = le.transform(df['genre'].astype(str))
         features = df[['genre_encoded', 'duration', 'bpm', 'plays']]
         
@@ -50,7 +67,6 @@ async def get_recommendations(track_id: str, payload: list = Body(...)):
             return {"status": "error", "message": "Track pa jwenn nan lis la"}
         
         dist = cosine_similarity(features)
-        # Pran 5 ki pi sanble
         similar_indices = dist[target_idx[0]].argsort()[-6:-1][::-1]
         
         recommended_ids = df.iloc[similar_indices]['trackId'].tolist()
@@ -66,7 +82,6 @@ async def train_model(payload: list = Body(...)):
     try:
         df = pd.DataFrame(payload)
         
-        # Netwayaj done strik (Sa ap ranje erè 422 a)
         cols_to_fix = ['duration', 'bpm', 'plays', 'liked']
         for col in cols_to_fix:
             if col in df.columns:
@@ -84,7 +99,6 @@ async def train_model(payload: list = Body(...)):
         clf = RandomForestClassifier(n_estimators=200, random_state=42)
         clf.fit(X, y)
         
-        # Sove yo lokalman sou Render (Ephemeral storage)
         joblib.dump(clf, 'h_mizik_ai_model.pkl')
         joblib.dump(le, 'genre_encoder.pkl')
         
@@ -95,7 +109,7 @@ async def train_model(payload: list = Body(...)):
         return {"status": "error", "message": str(e)}
 
 # ---------------------------------------------------------
-# ANALIZ BPM (RANJE ERÈ SCALAR LA)
+# ANALIZ BPM
 # ---------------------------------------------------------
 class TrackRequest(BaseModel):
     trackId: str
@@ -107,12 +121,9 @@ def analyze_and_update(track_id, audio_url):
         response = requests.get(audio_url, timeout=15)
         audio_data = BytesIO(response.content)
         
-        # SR=None pou pi bon presizyon, duration=30 pou vitès
         y, sr = librosa.load(audio_data, duration=30)
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
         
-        # RANJE ERÈ SCALAR LA ISIT LA:
-        # Librosa retounen yon array, nou pran premye valè a float anvan nou round li
         if isinstance(tempo, (np.ndarray, list)):
             bpm_val = float(tempo[0])
         else:
@@ -120,7 +131,6 @@ def analyze_and_update(track_id, audio_url):
             
         bpm = int(round(bpm_val))
         
-        # Voye l tounen nan Backend la
         patch_url = f"{BACKEND_URL}/tracks/{track_id}/bpm"
         requests.patch(patch_url, json={"bpm": bpm})
         
